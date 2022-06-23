@@ -334,11 +334,8 @@ fn p8(max: u64) {
 
             let time_elapsed = time_start.elapsed().unwrap().as_millis();
             println!(
-                "P8: Time elapsed: {}, sum: {}, step_size: {}k, threads: {}",
-                time_elapsed,
-                sum,
-                step_size / 1000,
-                thread_count
+                "P8: Time elapsed: {}, sum: {}, threads: {}",
+                time_elapsed, sum, thread_count
             );
         }
     }
