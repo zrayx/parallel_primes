@@ -341,11 +341,10 @@ fn p8(max: u64) {
     }
 }
 
-// Sieve of Eratosthenes, single thread, Vec<bool>
-fn p10(max: u64) {
-    let time_start = std::time::SystemTime::now();
-
+fn sieve(max: u64) -> Vec<bool> {
     let mut primes: Vec<bool> = vec![true; (max + 1) as usize];
+    primes[0] = false;
+    primes[1] = false;
     let mut first_prime: u64 = 2;
     while first_prime * first_prime <= max {
         for i in (first_prime * 2..=max).step_by(first_prime as usize) {
@@ -356,6 +355,14 @@ fn p10(max: u64) {
             first_prime += 1;
         }
     }
+    primes
+}
+
+// Sieve of Eratosthenes, single thread, Vec<bool>
+fn p10(max: u64) {
+    let time_start = std::time::SystemTime::now();
+
+    let primes = sieve(max);
 
     let mut sum = 0;
     for p in primes {
@@ -445,14 +452,73 @@ fn p11(max: u64) {
     );
 }
 
-fn main() {
-    let mut pb = PackedBits::new_set(128);
-    for i in 0..128 {
-        pb.clear(i);
+fn recursive_primes(max: usize, thread_count: usize) -> Vec<bool> {
+    if max <= 100 {
+        return sieve(max as u64 - 1);
     }
+
+    let slice_size = (max + thread_count) / (thread_count + 1);
+    let mut small_primes = recursive_primes(slice_size, thread_count);
+    while small_primes.len() > slice_size {
+        let _ = small_primes.pop();
+    }
+    let mut threads = vec![];
+    let small_primes_arc = Arc::new(small_primes);
+    for thread_idx in 1..=thread_count {
+        let start = thread_idx * slice_size;
+        let small_primes_clone = small_primes_arc.clone();
+        let result = thread::spawn(move || {
+            let mut v = vec![true; slice_size];
+            for (idx, p) in small_primes_clone.iter().enumerate() {
+                if *p {
+                    let start_multiple = (start + idx - 1) / idx * idx;
+                    let idx_multiple = start_multiple - start;
+                    for i in (idx_multiple..slice_size).step_by(idx) {
+                        v[i] = false;
+                    }
+                }
+            }
+
+            v
+        });
+        threads.push(result);
+    }
+    let mut result = small_primes_arc.as_slice().to_vec();
+    for thread in threads {
+        let mut v = thread.join().unwrap();
+        result.append(&mut v);
+    }
+
+    result
+}
+
+// Sieve, multithreaded
+fn p12(max: u64) {
+    for thread_count in 4..=4 {
+        let time_start = std::time::SystemTime::now();
+        let primes = recursive_primes(max as usize, thread_count);
+        let mut sum = 0;
+        for p in primes {
+            if p {
+                sum += 1;
+            };
+        }
+
+        let time_elapsed = time_start.elapsed().unwrap().as_millis();
+        println!(
+            "P12: Time elapsed: {}, sum: {}, max: {}M, threads: {}",
+            time_elapsed,
+            sum,
+            max / 1_000_000,
+            thread_count
+        );
+    }
+}
+
+fn main() {
     let num = 30_000_000;
-    p11(num);
-    p10(num);
+    // let num = 3_000_000;
+    // let num = 300;
     p1(num);
     p2(num);
     p3(num);
@@ -461,23 +527,7 @@ fn main() {
     p6(num);
     p7(num);
     p8(num);
-
-    // let v = vec![1, 2, 3];
-
-    // let val = Arc::new(v);
-
-    // let mut threads = vec![];
-    // for _ in 0..10 {
-    //     let val = Arc::clone(&val);
-
-    //     threads.push(thread::spawn(move || {
-    //         println!("{}", val.len());
-    //     }));
-    // }
-    // for t in threads {
-    //     t.join();
-    // }
-    // let mut v = Arc::try_unwrap(val).unwrap();
-    // v.push(1);
-    // println!("final: {}", v.len());
+    p10(num);
+    p11(num);
+    p12(num);
 }
