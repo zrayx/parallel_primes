@@ -341,8 +341,118 @@ fn p8(max: u64) {
     }
 }
 
+// Sieve of Eratosthenes, single thread, Vec<bool>
+fn p10(max: u64) {
+    let time_start = std::time::SystemTime::now();
+
+    let mut primes: Vec<bool> = vec![true; (max + 1) as usize];
+    let mut first_prime: u64 = 2;
+    while first_prime * first_prime <= max {
+        for i in (first_prime * 2..=max).step_by(first_prime as usize) {
+            primes[i as usize] = false;
+        }
+        first_prime += 1;
+        while first_prime < max && !primes[first_prime as usize] {
+            first_prime += 1;
+        }
+    }
+
+    let mut sum = 0;
+    for p in primes {
+        if p {
+            sum += 1
+        };
+    }
+
+    let time_elapsed = time_start.elapsed().unwrap().as_millis();
+    println!(
+        "P10: Time elapsed: {}, sum: {}, max: {}",
+        time_elapsed, sum, max
+    );
+}
+
+struct PackedBits {
+    data: Vec<u64>,
+    or_table: Vec<u64>,
+    and_table: Vec<u64>,
+}
+
+impl PackedBits {
+    fn new_set(n: usize) -> PackedBits {
+        let mut or_table = vec![];
+        let mut and_table = vec![];
+        for i in 0..64 {
+            let or = 1 << i;
+            let and = 0xffffffffffffffff ^ or;
+            or_table.push(or);
+            and_table.push(and);
+        }
+        let size = (n + 63) / 64;
+        PackedBits {
+            data: vec![0xffffffffffffffff; size],
+            or_table,
+            and_table,
+        }
+    }
+
+    fn clear(&mut self, idx: usize) {
+        let addr = idx / 64;
+        let offset = idx % 64;
+        let z = self.and_table[offset];
+        self.data[addr] &= z;
+        // println!(
+        //     "idx: {:x}, addr: {:x}, offset: {:x}, z: {:x}, data[{}]: {:x}",
+        //     idx, addr, offset, z, addr, self.data[addr]
+        // );
+    }
+
+    fn is_set(&self, idx: usize) -> bool {
+        let addr = idx / 64;
+        let offset = idx % 64;
+        let z = self.or_table[offset];
+
+        self.data[addr] & z > 0
+    }
+}
+
+// Sieve of Eratosthenes, packet bools
+fn p11(max: u64) {
+    let time_start = std::time::SystemTime::now();
+
+    let mut primes = PackedBits::new_set(max as usize + 1);
+    let mut first_prime: u64 = 2;
+    while first_prime * first_prime <= max {
+        for i in (first_prime * 2..=max).step_by(first_prime as usize) {
+            primes.clear(i as usize);
+        }
+        first_prime += 1;
+        while first_prime < max && !primes.is_set(first_prime as usize) {
+            first_prime += 1;
+        }
+    }
+
+    let mut sum = 0;
+    for i in 0..max {
+        if primes.is_set(i as usize) {
+            sum += 1
+        };
+    }
+
+    let time_elapsed = time_start.elapsed().unwrap().as_millis();
+    println!(
+        "P11: Time elapsed: {}, sum: {}, max: {}",
+        time_elapsed, sum, max
+    );
+}
+
 fn main() {
+    let mut pb = PackedBits::new_set(128);
+    for i in 0..128 {
+        pb.clear(i);
+    }
     let num = 30_000_000;
+    p11(num);
+    p10(num);
     p1(num);
     p2(num);
     p3(num);

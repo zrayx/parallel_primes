@@ -4,6 +4,10 @@ implementation to 32 parallel threads the time for 3 million primes went down fr
 ~400 ms to 9 ms. Speedup with the same algorith (memoization) was ~8x (3 million primes) and 13x (30 million primes)
 on a 16 core machine with 32 threads.
 
+opt-level = 3 in Cargo.toml, but opt-level = 2 delivered the same results.
+
+See also my implementation of the same algorithms in Zig: https://github.com/zrayx/parallel_primes_again
+
 3 million primes:
 
     P1: Time elapsed: 403, sum: 216817, max: 3000000
@@ -27,3 +31,13 @@ on a 16 core machine with 32 threads.
     P7: Time elapsed: 187, sum: 1857866, max: 30000000
     P8: Time elapsed: 149, sum: 1857863, threads: 16
     P8: Time elapsed: 146, sum: 1857866, threads: 32
+    P10: Time elapsed: 121, sum: 1857861, max: 30000000
+    P11: Time elapsed: 157, sum: 1857861, max: 30000000
+
+Notable implementations:
+
+P1 - naive implementation
+P3 - memoization
+P8 - memoization, multiple threads
+P10 - Sieve of Eratosthenes, single thread
+P11 - Sieve of Eratosthenes, single thread, using packed bits
