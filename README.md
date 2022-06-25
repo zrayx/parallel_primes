@@ -1,50 +1,43 @@
 # parallel_primes
-Trying parallel programming with implementing primes. From the simplest
-implementation to 32 parallel threads the time for 3 million primes went down from
-~400 ms to 9 ms. Speedup with the same algorith (memoization) was ~8x (3 million primes) and 13x (30 million primes)
-on a 16 core machine with 32 threads.
 
-opt-level = 3 in Cargo.toml, but opt-level = 2 delivered the same results.
+Parallelization of threads, and comparison of Rust vs Zig coding experience. This readme should be the same between the Zig and Rust projects.
 
-See also my implementation of the same algorithms in Zig: https://github.com/zrayx/parallel_primes_again
+Rust implementation: https://github.com/zrayx/parallel
 
-3 million primes:
+Zig implementation: https://github.com/zrayx/parallel_primes_again
 
-```
-P1: Time elapsed: 403, sum: 216817, max: 3000000
-P2: Time elapsed: 394, sum: 216816, max: 3000000
-P3: Time elapsed: 81, sum: 216816, max: 3000000
-P4: Time elapsed: 82, sum: 216816, max: 3000000
-P5: Time elapsed: 78, sum: 216816, max: 3000000
-P6: Time elapsed: 97, sum: 216816, max: 3000000
-P7: Time elapsed: 20, sum: 216822, max: 3000000
-P8: Time elapsed: 9, sum: 216818, max: 3000000, threads: 16
-P8: Time elapsed: 11, sum: 216822, max: 3000000, threads: 32
-P10: Time elapsed: 12, sum: 216816, max: 3000000
-P11: Time elapsed: 15, sum: 216818, max: 3000000
-P12: Time elapsed: 7, sum: 216816, max: 3M, threads: 4
-```
-30 million primes:
-```
-P1: Time elapsed: 10750, sum: 1857860, max: 30000000
-P2: Time elapsed: 10688, sum: 1857859, max: 30000000
-P3: Time elapsed: 1693, sum: 1857859, max: 30000000
-P4: Time elapsed: 1694, sum: 1857859, max: 30000000
-P5: Time elapsed: 1651, sum: 1857859, max: 30000000
-P6: Time elapsed: 2921, sum: 1857859, max: 30000000
-P7: Time elapsed: 187, sum: 1857866, max: 30000000
-P8: Time elapsed: 149, sum: 1857863, max: 30000000, threads: 16
-P8: Time elapsed: 146, sum: 1857866, max: 30000000, threads: 32
-P10: Time elapsed: 121, sum: 1857861, max: 30000000
-P11: Time elapsed: 157, sum: 1857861, max: 30000000
-P12: Time elapsed: 55, sum: 1857859, max: 30000000, threads: 4
-```
+At the moment I wouldn't be able to decide which language to chose for a larger hobby project, both have pros and cons.
+
+Zig pros:
+* Legibility
+  * Source code is very readable
+* Much easier to implement code
+* More fun to code in, not as much fighting the language
+* Embedded programming actually viable
+* Automatic conversion of integers if they fit the size (e.g. u32 -> i64)
+
+Zig cons:
+* Documentation
+  * Still early work in progress
+  * Being able to read the standard library and other people's code makes this much less of an issue as it seems at first
+* Tool support
+  * Couldn't get zls/debugging to work out of the box in vim or vs code.
+* A bit slower than Rust in this test
+* Language not yet stable
+* Shadowing of variables not allowed
+
+Performance
+===========
+Zig is a bit slower than Rust, although I think that this will be solved over time.
+
+Overview shown in zspread (https://github.com/zrayx/zspread):
+
+<img src="img/overview_p13.png" />
+
 Notable implementations:
 
 * P1 - naive implementation
 * P3 - memoization
-* P8 - memoization, multiple threads
+* P8/P9 - memoization, multiple threads
 * P10 - Sieve of Eratosthenes, single thread
-* P11 - Sieve of Eratosthenes, single thread, using packed bits
-* P12 - Sieve of Eratosthenes, many threads (strangely, 32 threads not faster than 4)
-
+* P12/P13 - Sieve of Eratosthenes, many threads. Unfortunately doesn't scale in either Rust or Zig. I'm guessing that the memory is the bottleneck.
