@@ -1,6 +1,9 @@
+use packed_bits::PackedBits;
+use std::env;
 use std::sync::Arc;
-
 use std::thread;
+
+mod packed_bits;
 
 fn is_prime1(n: u64) -> u64 {
     if n <= 3 {
@@ -378,55 +381,11 @@ fn p10(max: u64) {
     );
 }
 
-struct PackedBits {
-    data: Vec<u64>,
-    or_table: Vec<u64>,
-    and_table: Vec<u64>,
-}
-
-impl PackedBits {
-    fn new_set(n: usize) -> PackedBits {
-        let mut or_table = vec![];
-        let mut and_table = vec![];
-        for i in 0..64 {
-            let or = 1 << i;
-            let and = 0xffffffffffffffff ^ or;
-            or_table.push(or);
-            and_table.push(and);
-        }
-        let size = (n + 63) / 64;
-        PackedBits {
-            data: vec![0xffffffffffffffff; size],
-            or_table,
-            and_table,
-        }
-    }
-
-    fn clear(&mut self, idx: usize) {
-        let addr = idx / 64;
-        let offset = idx % 64;
-        let z = self.and_table[offset];
-        self.data[addr] &= z;
-        // println!(
-        //     "idx: {:x}, addr: {:x}, offset: {:x}, z: {:x}, data[{}]: {:x}",
-        //     idx, addr, offset, z, addr, self.data[addr]
-        // );
-    }
-
-    fn is_set(&self, idx: usize) -> bool {
-        let addr = idx / 64;
-        let offset = idx % 64;
-        let z = self.or_table[offset];
-
-        self.data[addr] & z > 0
-    }
-}
-
 // Sieve of Eratosthenes, packet bools
 fn p11(max: u64) {
     let time_start = std::time::SystemTime::now();
 
-    let mut primes = PackedBits::new_set(max as usize + 1);
+    let mut primes = PackedBits::new_set(max as usize + 1, true);
     let mut first_prime: u64 = 2;
     while first_prime * first_prime <= max {
         for i in (first_prime * 2..=max).step_by(first_prime as usize) {
@@ -588,25 +547,318 @@ fn p12a(max: u64) {
     }
 }
 
+fn recursive_primes_p16(max: usize, thread_count: usize, page_size: usize) -> Vec<bool> {
+    if max <= page_size {
+        return sieve(max as u64 - 1);
+    }
+
+    let small_primes = if page_size * page_size > max {
+        sieve(page_size as u64 - 1)
+    } else {
+        let slice_size = (max as f64).sqrt().trunc() as usize;
+        let slice_size = (slice_size + page_size) / page_size * page_size;
+        recursive_primes_p16(slice_size, thread_count, page_size)
+    };
+
+    let slice_size = max / thread_count / 8;
+    let slice_size = (slice_size + page_size) / page_size * page_size;
+    let slice_size = if slice_size == max {
+        page_size
+    } else {
+        slice_size
+    };
+
+    let mut start = small_primes.len();
+
+    let small_primes_arc = Arc::new(small_primes);
+    let mut result = small_primes_arc.as_slice().to_vec();
+    while start < max {
+        let mut threads = vec![];
+        for _ in 1..=thread_count {
+            let small_primes_clone = small_primes_arc.clone();
+            let end = (start + slice_size).min(max);
+            let result = thread::spawn(move || {
+                let mut v = vec![true; end - start];
+                for (idx, p) in small_primes_clone.iter().enumerate() {
+                    if *p {
+                        let j = (start + idx - 1) / idx * idx;
+                        for i in (j..end).step_by(idx) {
+                            v[i - start] = false;
+                        }
+                    }
+                }
+
+                v
+            });
+            threads.push(result);
+            start = end;
+        }
+        for thread in threads {
+            let mut v = thread.join().unwrap();
+            result.append(&mut v);
+        }
+    }
+    let _ = result.split_off(max);
+    result
+}
+
+// like 12a, but better alignment
+fn p16(max: u64, print_detail: bool) {
+    let page_size_min = if print_detail { 512 } else { 4096 };
+    let page_size_max = if print_detail { 1024 } else { 4096 };
+    let mut page_size = page_size_min;
+    let thread_min = if print_detail { 8 } else { 16 };
+    let thread_max = if print_detail { 32 } else { 16 };
+    let mut min_time = 99999999;
+    let mut thread_count = thread_min;
+
+    if print_detail {
+        print!("{:7}", "thd/pg");
+        while thread_count <= thread_max {
+            print!("{:7}", thread_count);
+            thread_count *= 2;
+        }
+        println!();
+    }
+
+    while page_size <= page_size_max {
+        if print_detail {
+            print!("{:7}", page_size);
+        }
+        let mut thread_count = thread_min;
+        while thread_count <= thread_max {
+            let time_start = std::time::SystemTime::now();
+            let primes = recursive_primes_p16(max as usize, thread_count, page_size);
+            let mut sum: i128 = 0;
+            for p in primes {
+                if p {
+                    sum += 1;
+                };
+            }
+
+            let time_elapsed = time_start.elapsed().unwrap().as_millis();
+            if print_detail {
+                if time_elapsed < min_time + min_time / 10 {
+                    if time_elapsed < min_time {
+                        min_time = time_elapsed;
+                    }
+                    print!("\x1b[93m");
+                }
+                print!("{:7}\x1b[0m", time_elapsed);
+            }
+            let check = |expected| {
+                if sum != expected {
+                    println!("\x1b[93msum={}, but should be ~{}\x1b[0m", sum, expected);
+                }
+            };
+            match max {
+                3_000_000_000 => check(144449537),
+                300_000_000 => check(16252325),
+                30_000_000 => check(1857859),
+                3_000_000 => check(216816),
+                300 => check(62),
+                _ => {
+                    println!("\x1b[93mhave {}, but sum unknown for {}\x1b[0m", sum, max);
+                }
+            }
+            if !print_detail {
+                // impossible
+                println!(
+                    "P16: Time elapsed: {}, sum: {}, max: {}M, threads: {}, page_size: {}",
+                    time_elapsed,
+                    sum,
+                    max / 1_000_000,
+                    thread_count,
+                    page_size
+                );
+            }
+            thread_count *= 2;
+        }
+        if print_detail {
+            println!();
+        }
+
+        page_size *= 2;
+    }
+}
+
+fn packed_sieve(max: u64) -> PackedBits {
+    let mut primes = PackedBits::new_set(max as usize + 1, true);
+    primes.clear(0);
+    primes.clear(1);
+
+    let mut first_prime: u64 = 2;
+    while first_prime * first_prime <= max {
+        for i in (first_prime * 2..=max).step_by(first_prime as usize) {
+            primes.clear(i as usize);
+        }
+        first_prime += 1;
+        while first_prime < max && !primes.is_set(first_prime as usize) {
+            first_prime += 1;
+        }
+    }
+    primes
+}
+
+fn recursive_primes_p17(max: usize, thread_count: usize, page_size: usize) -> PackedBits {
+    if max <= page_size {
+        return packed_sieve(max as u64 - 1);
+    }
+
+    let small_primes = if page_size * page_size > max {
+        packed_sieve(page_size as u64 - 1)
+    } else {
+        let slice_size = (max as f64).sqrt().trunc() as usize;
+        let slice_size = (slice_size + page_size) / page_size * page_size;
+        recursive_primes_p17(slice_size, thread_count, page_size)
+    };
+
+    let slice_size = max / thread_count / 8;
+    let slice_size = (slice_size + page_size) / page_size * page_size;
+    let slice_size = if slice_size == max {
+        page_size
+    } else {
+        slice_size
+    };
+
+    let mut start = small_primes.len();
+
+    let mut result = small_primes.clone();
+    //let small_primes_arc = Arc::new(small_primes);
+    while start < max {
+        let mut threads = vec![];
+        for _ in 1..=thread_count {
+            let small_primes_clone = small_primes.clone();
+            let end = (start + slice_size).min(max);
+            let result = thread::spawn(move || {
+                let mut v = PackedBits::new_set(end - start, true);
+                for idx in 0..small_primes_clone.len() {
+                    if small_primes_clone.is_set(idx) {
+                        let j = (start + idx - 1) / idx * idx;
+                        for i in (j..end).step_by(idx) {
+                            v.clear(i - start);
+                        }
+                    }
+                }
+
+                v
+            });
+            threads.push(result);
+            start = end;
+        }
+        for thread in threads {
+            let mut v = thread.join().unwrap();
+            result.append(&mut v);
+        }
+    }
+    // let _ = result.split_off(max);
+    result
+}
+
+// like p16, but working on bits instead of bytes
+fn p17(max: u64, print_detail: bool) {
+    let page_size_min = if print_detail { 256 } else { 4096 };
+    let page_size_max = if print_detail { 128 * 1024 } else { 4096 };
+    let mut page_size = page_size_min;
+    let thread_min = if print_detail { 8 } else { 16 };
+    let thread_max = if print_detail { 32 } else { 16 };
+    let mut min_time = 99999999999;
+    let mut thread_count = thread_min;
+    let real_max = (max + 63) / 64 * 64;
+
+    let _ = PackedBits::new_set(100, true);
+
+    if print_detail {
+        print!("{:7}", "thd/pg");
+        while thread_count <= thread_max {
+            print!("{:7}", thread_count);
+            thread_count *= 2;
+        }
+        println!();
+    }
+
+    while page_size <= page_size_max {
+        if print_detail {
+            print!("{:7}", page_size);
+        }
+        let mut thread_count = thread_min;
+        while thread_count <= thread_max {
+            let time_start = std::time::SystemTime::now();
+            let primes = recursive_primes_p17(real_max as usize, thread_count, page_size);
+            let sum = primes.count_ones(max as usize);
+
+            let time_elapsed = time_start.elapsed().unwrap().as_millis();
+            if print_detail {
+                if time_elapsed < min_time + min_time / 10 {
+                    if time_elapsed < min_time {
+                        min_time = time_elapsed;
+                    }
+                    print!("\x1b[93m");
+                }
+                print!("{:7}\x1b[0m", time_elapsed);
+            }
+            let check = |expected| {
+                if sum != expected {
+                    println!("\x1b[93msum={}, but should be ~{}\x1b[0m", sum, expected);
+                }
+            };
+            match max {
+                3_000_000_000 => check(144449537),
+                300_000_000 => check(16252325),
+                30_000_000 => check(1857859),
+                3_000_000 => check(216816),
+                300 => check(62),
+                _ => {
+                    println!(
+                        "\x1b[93mhave {}, but sum unknown for {}\x1b[0m",
+                        sum, real_max
+                    );
+                }
+            }
+            if !print_detail {
+                // impossible
+                println!(
+                    "P17: Time elapsed: {}, sum: {}, max: {}M, threads: {}, page_size: {}",
+                    time_elapsed,
+                    sum,
+                    real_max / 1_000_000,
+                    thread_count,
+                    page_size
+                );
+            }
+            thread_count *= 2;
+        }
+        if print_detail {
+            println!();
+        }
+
+        page_size *= 2;
+    }
+}
+
 fn main() {
-    // let num = 3_000_000_000;
+    let args = env::args();
+    let num = 3_000_000_000;
     // let num = 300_000_000;
-    let num = 30_000_000;
+    // let num = 30_000_000;
     // let num = 3_000_000;
     // let num = 300;
-    //p16(num);
-    p12a(num);
-    p12(num);
-    p11(num);
-    p10(num);
-    p8(num);
-    if num <= 3_000_000 {
-        p7(num);
-        p6(num);
-        p5(num);
-        p4(num);
-        p3(num);
-        p2(num);
-        p1(num);
+    p17(num, true);
+    if args.len() > 0 {
+        p16(num, false);
+        p12a(num);
+        p12(num);
+        p11(num);
+        p10(num);
+        p8(num);
+        if num <= 3_000_000 {
+            p7(num);
+            p6(num);
+            p5(num);
+            p4(num);
+            p3(num);
+            p2(num);
+            p1(num);
+        }
     }
 }
