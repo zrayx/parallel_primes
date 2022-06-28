@@ -452,13 +452,13 @@ fn p11(max: u64) {
     );
 }
 
-fn recursive_primes(max: usize, thread_count: usize) -> Vec<bool> {
+fn recursive_primes_p12(max: usize, thread_count: usize) -> Vec<bool> {
     if max <= 100 {
         return sieve(max as u64 - 1);
     }
 
     let slice_size = (max + thread_count) / (thread_count + 1);
-    let mut small_primes = recursive_primes(slice_size, thread_count);
+    let mut small_primes = recursive_primes_p12(slice_size, thread_count);
     while small_primes.len() > slice_size {
         let _ = small_primes.pop();
     }
@@ -496,7 +496,7 @@ fn recursive_primes(max: usize, thread_count: usize) -> Vec<bool> {
 fn p12(max: u64) {
     for thread_count in 4..=4 {
         let time_start = std::time::SystemTime::now();
-        let primes = recursive_primes(max as usize, thread_count);
+        let primes = recursive_primes_p12(max as usize, thread_count);
         let mut sum = 0;
         for p in primes {
             if p {
@@ -515,19 +515,98 @@ fn p12(max: u64) {
     }
 }
 
+fn recursive_primes_p12a(max: usize, thread_count: usize, init_size: usize) -> Vec<bool> {
+    if max <= init_size {
+        return sieve(max as u64 - 1);
+    }
+
+    let slice_size = (max + thread_count) / (thread_count + 1);
+    let slice_size = (slice_size + init_size) / init_size * init_size;
+    let mut small_primes = if slice_size * slice_size <= max {
+        sieve(slice_size as u64 - 1)
+    } else {
+        recursive_primes_p12a(slice_size, thread_count, init_size)
+    };
+    while small_primes.len() > slice_size {
+        let _ = small_primes.pop();
+    }
+    let mut threads = vec![];
+    let small_primes_arc = Arc::new(small_primes);
+    for thread_idx in 1..=thread_count {
+        let start = thread_idx * slice_size;
+        let small_primes_clone = small_primes_arc.clone();
+        let result = thread::spawn(move || {
+            let mut v = vec![true; slice_size];
+            for (idx, p) in small_primes_clone.iter().enumerate() {
+                if *p {
+                    let start_multiple = (start + idx - 1) / idx * idx;
+                    let idx_multiple = start_multiple - start;
+                    for i in (idx_multiple..slice_size).step_by(idx) {
+                        v[i] = false;
+                    }
+                }
+            }
+
+            v
+        });
+        threads.push(result);
+    }
+    let mut result = small_primes_arc.as_slice().to_vec();
+    for thread in threads {
+        let mut v = thread.join().unwrap();
+        result.append(&mut v);
+    }
+
+    result
+}
+
+// Sieve, multithreaded, aligned
+fn p12a(max: u64) {
+    let mut init_size = 32 * 1024;
+    while init_size <= 32 * 1024 {
+        for thread_count in 4..=4 {
+            let time_start = std::time::SystemTime::now();
+            let primes = recursive_primes_p12a(max as usize, thread_count, init_size);
+            let mut sum = 0;
+            for p in primes {
+                if p {
+                    sum += 1;
+                };
+            }
+
+            let time_elapsed = time_start.elapsed().unwrap().as_millis();
+            println!(
+                "P12a: Time elapsed: {}, sum: {}, max: {}M, threads: {}, init_size: {}",
+                time_elapsed,
+                sum,
+                max / 1_000_000,
+                thread_count,
+                init_size
+            );
+        }
+        init_size *= 2;
+    }
+}
+
 fn main() {
+    // let num = 3_000_000_000;
+    // let num = 300_000_000;
     let num = 30_000_000;
     // let num = 3_000_000;
     // let num = 300;
-    p1(num);
-    p2(num);
-    p3(num);
-    p4(num);
-    p5(num);
-    p6(num);
-    p7(num);
-    p8(num);
-    p10(num);
-    p11(num);
+    //p16(num);
+    p12a(num);
     p12(num);
+    p11(num);
+    p10(num);
+    p8(num);
+    if num <= 3_000_000 {
+        p7(num);
+        p6(num);
+        p5(num);
+        p4(num);
+        p3(num);
+        p2(num);
+        p1(num);
+    }
 }
